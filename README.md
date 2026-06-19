@@ -67,15 +67,7 @@ Raw microscopy images, intermediate manifests, and trained model weights are
 **not** distributed with the source code due to size (~tens of GB). They are
 available from the corresponding author on reasonable request.
 
-## Citation
 
-```bibtex
-@article{zhao_morphast_2026,
-  title  = {...},
-  author = {Zhao, Zekai and ...},
-  year   = {2026},
-}
-```
 
 ## License
 
