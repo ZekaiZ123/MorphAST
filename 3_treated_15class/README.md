@@ -4,15 +4,6 @@ Train and evaluate a 15-way EfficientNet-B0 classifier on antibiotic-treated
 phase-contrast micrographs. The 15 classes are the cartesian product of 5
 strains × 3 antibiotics:
 
-| Strain \ Antibiotic | Ampicillin | MΦ-ND (CND) | Kanamycin |
-|---|---|---|---|
-| AIEC | ● | ● | ● |
-| E. coli DH5α | ● | ● | ● |
-| E. coli DH5α AmpR | ● | ● | ●* |
-| E. coli DH5α KanR | ●* | ● | ● |
-| UPEC | ● | ● | ● |
-
-*\* = strain is sensitive to this drug despite its background resistance plasmid (added in the 15-class build; the 13-class baseline omitted these two combinations).*
 
 Each class is observed at 6 timepoints (5, 10, 15, 30, 60, 90 min). Held-out
 predictions are pooled across timepoints for headline metrics; per-timepoint
