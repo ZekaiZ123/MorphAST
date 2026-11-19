@@ -61,3 +61,14 @@ Final artifacts: `corrected_results.md`, `corrected_results.json`,
 `TASK/fold_N/BACKBONE/best.pt`; selection metadata and test metrics are adjacent.
 
 Method reference: [scikit-learn nested versus non-nested cross-validation](https://scikit-learn.org/stable/auto_examples/model_selection/plot_nested_cross_validation_iris.html).
+
+## Dataset accounting audit
+
+Run `audit_dataset_accounting.py --out_dir outputs/rebuttal/dataset_accounting_RUN_ID`
+with a new output directory. The audit inventories the original raw source trees,
+checks 12/13/15-class cohort transitions, rebuilds field QC from tile metadata,
+and matches retained populations to training arguments and saved prediction rows.
+It exports a Markdown report, before/after tables by strain, treatment and time,
+source-folder breakdowns, row-level decisions, tile coverage, and source hashes.
+Replicate identifiers remain UNKNOWN unless verified; workbook filename matches
+are exported separately as candidates. Input images and manifests are read only.
