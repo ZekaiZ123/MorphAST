@@ -200,10 +200,13 @@ def run_fold(run_dir: Path, task: str, fold: int, device="cuda"):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run_dir", type=Path, required=True)
-    parser.add_argument("--task", choices=["untreated", "treated"], required=True)
+    parser.add_argument("--task", choices=["untreated", "treated", "treated15"], required=True)
     parser.add_argument("--fold", type=int, choices=range(1, 6), required=True)
     parser.add_argument("--device", choices=["cuda", "cpu"], default="cuda")
     args = parser.parse_args()
+    config = json.loads((args.run_dir / "run.json").read_text())
+    if args.task not in config["tasks"]:
+        parser.error(f"Task {args.task!r} is not included in this frozen run")
     if args.device == "cuda" and not torch.cuda.is_available():
         raise SystemExit("CUDA unavailable: submit this job to the GPU partition")
     torch.set_num_threads(1)

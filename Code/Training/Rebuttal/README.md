@@ -60,6 +60,27 @@ Final artifacts: `corrected_results.md`, `corrected_results.json`,
 `outer_test_predictions.csv`. Model weights live in
 `TASK/fold_N/BACKBONE/best.pt`; selection metadata and test metrics are adjacent.
 
+### Treated 15-class only
+
+Preparation defaults to the original untreated/treated-13 pair. Use the explicit
+`treated15` task to prepare a separate 15-class run without retraining either:
+
+```bash
+RUN_DIR="$PWD/Model/Rebuttal_CV/treated15_RUN_ID"
+python Code/Training/Rebuttal/prepare_nested_cv.py --run_dir "$RUN_DIR" --tasks treated15 --limitation "Checkpoint-selection correction only; unresolved conflicting-label and cross-fold byte duplicates remain."
+sbatch --array=1-5%4 --output="$RUN_DIR/train-%A_%a.out" "$RUN_DIR/source/Code/Training/Rebuttal/run_nested_cv.sbatch" "$RUN_DIR" treated15
+sbatch --dependency=afterany:TRAIN_JOB_ID --output="$RUN_DIR/report-%j.out" "$RUN_DIR/source/Code/Training/Rebuttal/summarize_nested_cv.sbatch" "$RUN_DIR"
+```
+
+The single-cohort array takes the task as its second argument; each array index
+is the outer fold. The 15-class baseline is
+`Model/Benchmark_Treated_Condition_15class_QC/efficientnet_b0` (not the archived
+`efficientnet_b0_broken_classids` directory). Exact original outer-test image
+membership and all 15 labels in every inner/outer partition are checked before
+submission. No label corrections, duplicate removal or regrouping are performed.
+Repeat `--limitation` to record unresolved issues in both `run.json` and the final
+report; preserving the legacy folds does not establish content-level independence.
+
 Method reference: [scikit-learn nested versus non-nested cross-validation](https://scikit-learn.org/stable/auto_examples/model_selection/plot_nested_cross_validation_iris.html).
 
 ## Dataset accounting audit

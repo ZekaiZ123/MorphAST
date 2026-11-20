@@ -24,19 +24,29 @@ from utils.identity_audit_gate import reject_v1_in_legacy_trainer
 TASKS = {
     "untreated": ("Benchmark_0min_5class_QC", ["resnet18", "efficientnet_b0", "swin_tiny"]),
     "treated": ("Benchmark_Treated_Condition_13class_QC", ["efficientnet_b0"]),
+    "treated15": ("Benchmark_Treated_Condition_15class_QC", ["efficientnet_b0"]),
 }
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run_dir", type=Path, required=True)
     parser.add_argument("--num_workers", type=int, default=6)
-    args = parser.parse_args()
+    parser.add_argument("--tasks", nargs="+", choices=TASKS, default=["untreated", "treated"],
+                        help="Cohorts to freeze; treated is 13-class, treated15 is 15-class")
+    parser.add_argument("--limitation", action="append", default=[],
+                        help="Known run limitation, preserved in the configuration and report; repeatable")
+    args = parser.parse_args(argv)
+    if len(args.tasks) != len(set(args.tasks)):
+        parser.error("Each task must be specified only once")
+    if args.num_workers < 0:
+        parser.error("--num_workers must be nonnegative")
     run_dir = args.run_dir.resolve()
     if run_dir.exists():
         raise FileExistsError(f"Use a new run directory: {run_dir}")
     prepared = {}
-    for task, (benchmark, candidates) in TASKS.items():
+    for task in args.tasks:
+        benchmark, candidates = TASKS[task]
         baseline = ROOT / "Model" / benchmark
         training = json.loads((baseline / "efficientnet_b0/training_args.json").read_text())
         manifest = ROOT / training["manifest_csv"]
@@ -79,7 +89,7 @@ def main():
         "selection_metric": "inner_validation_macro_f1", "checkpoint_tie_break": "earliest_epoch",
         "architecture_tie_break": "declared_candidate_order", "class_weights_source": "inner_training_only",
         "outer_test_evaluations_per_candidate": 1, "refit_on_train_plus_validation": False,
-        "std_ddof": 1, "tasks": {},
+        "std_ddof": 1, "limitations": args.limitation, "tasks": {},
     }
     for task, (df, names, training, manifest, partitions, summaries, candidates) in prepared.items():
         dest = run_dir / task
@@ -87,7 +97,8 @@ def main():
         (dest / "legacy").mkdir()
         df.to_csv(dest / "manifest.csv", index=False)
         settings = {k: training[k] for k in ("epochs", "batch_size", "lr", "weight_decay", "img_size", "seed", "n_folds", "use_amp")}
-        settings.update(num_workers=args.num_workers, candidates=candidates, class_names=names,
+        settings.update(benchmark=TASKS[task][0], num_workers=args.num_workers,
+                        candidates=candidates, class_names=names,
                         n_samples=len(df), n_groups=int(df.group_id.nunique()),
                         original_manifest=str(manifest), original_manifest_sha256=sha256(manifest),
                         manifest_sha256=sha256(dest / "manifest.csv"), splits={})
@@ -105,7 +116,9 @@ def main():
     source_dirs = ["Code/Training/Rebuttal", "Code/Training/Model_Training_5_class", "Code/utils"]
     config["source_sha256"] = {}
     for directory in source_dirs:
-        for source in sorted((ROOT / directory).glob("*.py")):
+        for source in sorted((ROOT / directory).iterdir()):
+            if not source.is_file() or source.suffix not in (".py", ".sbatch"):
+                continue
             relative = source.relative_to(ROOT)
             dest = run_dir / "source" / relative
             dest.parent.mkdir(parents=True, exist_ok=True)

@@ -54,6 +54,7 @@ def summarize(run_dir: Path):
     report = {
         "protocol": config["protocol"], "run_dir": str(run_dir),
         "run_sha256": sha256(run_dir / "run.json"), "tasks": {}, "status": "complete",
+        "limitations": config.get("limitations", []),
     }
     lines = ["# Reviewer 1: corrected cross-validation", "",
              "Checkpoint epochs and, for untreated images, backbone choice are selected on an internal grouped validation subset. "
@@ -62,6 +63,10 @@ def summarize(run_dir: Path):
              "All variability below is sample standard deviation across five folds (ddof=1). "
              "Legacy standard deviations are recomputed with the same convention; original runs used ddof=0. "
              "Ranges and individual fold values are also exported. These SDs are descriptive, not confidence intervals.", ""]
+    if report["limitations"]:
+        lines.extend(["## Known limitations", ""])
+        lines.extend(f"- {limitation}" for limitation in report["limitations"])
+        lines.append("")
     all_rows = []
     comparisons = []
     for task, settings in config["tasks"].items():
@@ -80,7 +85,9 @@ def summarize(run_dir: Path):
                 failed.append(fold)
             else:
                 pending.append(fold)
-        lines.extend([f"## {task.capitalize()}", ""])
+        title = {"untreated": "Untreated (5-class)", "treated": "Treated (13-class)",
+                 "treated15": "Treated (15-class)"}.get(task, task.capitalize())
+        lines.extend([f"## {title}", ""])
         if pending or failed:
             report["status"] = "incomplete"
             report["tasks"][task] = {"status": "incomplete", "complete_folds": complete,

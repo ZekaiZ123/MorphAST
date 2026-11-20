@@ -16,12 +16,22 @@ export HF_HUB_OFFLINE=1
 export HF_HUB_DISABLE_TELEMETRY=1
 export PYTHONUNBUFFERED=1
 
-if (( SLURM_ARRAY_TASK_ID <= 5 )); then
+if [[ -n "${2:-}" ]]; then
+  TASK="$2"
+  FOLD="$SLURM_ARRAY_TASK_ID"
+  if (( FOLD < 1 || FOLD > 5 )); then
+    echo "Single-cohort runs require --array=1-5%4" >&2
+    exit 2
+  fi
+elif (( SLURM_ARRAY_TASK_ID >= 1 && SLURM_ARRAY_TASK_ID <= 5 )); then
   TASK=untreated
   FOLD="$SLURM_ARRAY_TASK_ID"
-else
+elif (( SLURM_ARRAY_TASK_ID >= 6 && SLURM_ARRAY_TASK_ID <= 10 )); then
   TASK=treated
   FOLD=$(( SLURM_ARRAY_TASK_ID - 5 ))
+else
+  echo "Default two-cohort runs require array indices 1-10" >&2
+  exit 2
 fi
 
 "$PY" "$RUN_DIR/source/Code/Training/Rebuttal/run_nested_cv.py" \
