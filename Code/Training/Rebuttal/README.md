@@ -93,3 +93,41 @@ It exports a Markdown report, before/after tables by strain, treatment and time,
 source-folder breakdowns, row-level decisions, tile coverage, and source hashes.
 Replicate identifiers remain UNKNOWN unless verified; workbook filename matches
 are exported separately as candidates. Input images and manifests are read only.
+
+## Culture/slide/session CV feasibility
+
+Before attempting the requested higher-level split, run:
+
+```bash
+python Code/Training/Rebuttal/audit_grouped_cv_feasibility.py --out_dir outputs/rebuttal/grouped_cv_feasibility_RUN_ID --verify_images
+```
+
+This preflight uses the treated 15-class retained population, verifies the
+metadata audit's source evidence, and checks that image identities, class labels,
+original field groups and time points agree with the original manifest. All
+copies of conflicting-label exact content are excluded BEFORE filtering for
+verified metadata, so an unmatched counterpart cannot conceal a conflict.
+Missing culture/preparation/slide/session metadata is excluded from this matched
+analysis. Same-label exact copies remain linked. Source images and labels are
+not modified; these are explicit sensitivity-population exclusions.
+
+Culture, slide, session and exact-hash constraints are combined by connected
+components: sharing ANY identifier keeps images together, including indirect
+links. The original-field-preserving version is reported alongside the requested
+IDs alone, field/hash grouping, preparation grouping and individual higher-level
+identifiers. SCID is not used. Identifier tuples are not a safe alternative,
+because the same culture could then cross partitions through different slides.
+
+Outputs include `feasibility.md`, `feasibility.json`, a row-level inclusion ledger,
+class/time exclusion counts, component membership, per-class grouping support,
+and original field groups linking multiple preparations. `--verify_images`
+rehashes all original retained files, including excluded conflicts; without it,
+the report explicitly identifies use of the existing full-cohort hash inventory.
+
+The preflight never launches training or writes trainable folds. A class present
+in only one component cannot occur in both training and testing. Counts above
+the requested fold threshold are only necessary conditions, not a validated
+split: inner-validation coverage and crossed class constraints still need
+checking. Do not silently discard culture/field constraints or replace the task
+with unseen-class evaluation to make a split possible. Preparation/slide counts
+do not establish independent biological replication.
