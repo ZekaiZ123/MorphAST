@@ -106,6 +106,31 @@ later rebuttal sensitivity exclusions are reported as different populations.
 
 ## Raw confusion counts and error images
 
+For the **original publication EfficientNet-B0 models**, rather than corrected
+reruns, export class-specific counts, recorded acquisition IDs and raw matrices:
+
+```bash
+python Code/Training/Rebuttal/export_publication_evidence.py \
+  --metadata_audit outputs/rebuttal/experimental_independence_20261120 \
+  --out_dir outputs/rebuttal/publication_model_evidence_RUN_ID
+```
+
+The default exports untreated 5-class, treated 13-class and treated 15-class
+results separately. Use `--cohorts treated_15class` to select one. Counts before
+and after QC, actual culture/preparation/slide/session ID lists, missing-ID image
+denominators, and class/time/acquisition tables retain the original populations.
+Independent biological/experimental replicate counts remain NOT ESTABLISHED;
+SCID is excluded and documented ID counts are not equated to replicate counts.
+Exact and treatment-decision matrices contain integer counts including zeros,
+with pooled and per-fold exports; treated matrices also have time/acquisition
+strata. Original untreated per-image predictions were not saved, so its matrices
+come directly from fold metrics, not reconstructed image-level predictions.
+Population, class order, metadata coverage, per-fold matrices and metrics are
+cross-checked. `verification.json` records source and output hashes. A new output
+directory is required; no model, data, manuscript or earlier output is changed.
+These original held-out folds were also used for checkpoint selection and must
+not be presented as corrected independent-test estimates.
+
 ```bash
 python Code/Training/Rebuttal/audit_error_cases.py --out_dir outputs/rebuttal/error_cases_RUN_ID
 ```
