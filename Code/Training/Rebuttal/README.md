@@ -60,6 +60,24 @@ Final artifacts: `corrected_results.md`, `corrected_results.json`,
 `outer_test_predictions.csv`. Model weights live in
 `TASK/fold_N/BACKBONE/best.pt`; selection metadata and test metrics are adjacent.
 
+### Corrected five-class confusion plot
+
+```bash
+python Code/Training/Rebuttal/plot_corrected_fiveclass_confusion.py \
+  --run_dir Model/Rebuttal_CV/reviewer1_20261118 \
+  --out_dir outputs/rebuttal/corrected_fiveclass_confusion_RUN_ID
+```
+
+This reads corrected outer-test predictions, not original publication metrics.
+Frozen sources, manifests, group-disjoint splits, checkpoint/selection hashes and
+complete once-per-image outer coverage are verified before plotting raw counts.
+The primary inner-selected procedure and fixed EfficientNet-B0 secondary result
+are exported separately; `--procedures primary` requests only the former.
+Each includes PNG/PDF/SVG figures, pooled/per-fold integer CSVs, predictions and
+metrics. Source/artifact hashes are recorded in `verification.json`. A new output
+directory is required. No inference, retraining or earlier-output changes occur.
+This corrects selection/evaluation reuse, not experimental-replicate dependence.
+
 ### Treated 15-class only
 
 Preparation defaults to the original untreated/treated-13 pair. Use the explicit
