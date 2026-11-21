@@ -53,6 +53,8 @@ QC_NUMERIC = {
     "seg_qc_low_cells_tiles": "low_cells", "seg_qc_large_cell_tiles": "large_cells",
     "seg_qc_artifact_tiles": "artifacts",
 }
+ACQUISITION_IDS = ("culture_id", "preparation_id", "slide_id", "acquisition_session_id")
+METADATA_MATCH = "unique_composite_and_dimensions"
 
 
 def normalize_fields(df):
@@ -91,6 +93,115 @@ def retention_table(frame, dimensions):
     if not (table.n_excluded == table.n_qc_failed + table.n_missing_segmentation + table.n_other_excluded).all():
         raise ValueError("Nonconserving retention table")
     return table
+
+
+def attach_acquisition_metadata(frame, mapping):
+    """Join only accepted provenance associations; never infer biological repeats."""
+    if mapping.image_path.isna().any() or mapping.image_path.duplicated().any():
+        raise ValueError("Metadata mapping requires unique, nonmissing image paths")
+    if not set(frame.image_path).issubset(set(mapping.image_path)):
+        raise ValueError("Metadata mapping does not cover the pre-QC population")
+    cols = ["image_path", "strain", "treatment", "timepoint", "filename", "mapping_status",
+            "metadata_row", "identity_evidence", *ACQUISITION_IDS]
+    result = frame.merge(mapping[cols], on="image_path", how="left", validate="one_to_one")
+    expected_treatment = result.canonical_treatment.where(result.timepoint_min.ne(0), "Control")
+    if (not result.strain.eq(result.canonical_strain).all()
+            or not result.treatment.eq(expected_treatment).all()
+            or not pd.to_numeric(result.timepoint, errors="raise").eq(result.timepoint_min).all()
+            or not result.filename.eq(result.image_path.map(lambda p: Path(p).name)).all()):
+        raise ValueError("Metadata mapping changed image condition/time/filename")
+    accepted = result.mapping_status.eq(METADATA_MATCH)
+    if result.mapping_status.isna().any():
+        raise ValueError("Missing metadata mapping status")
+    if result.loc[accepted, "metadata_row"].isna().any():
+        raise ValueError("Accepted metadata association lacks a workbook row")
+    if not result.loc[accepted, "identity_evidence"].eq("composite_metadata_association_not_checksum_verified").all():
+        raise ValueError("Unexpected metadata identity evidence")
+    for column in ACQUISITION_IDS:
+        values = result[column].fillna("UNKNOWN").astype(str).str.strip()
+        values = values.mask(values.str.upper().isin(MISSING), "UNKNOWN")
+        if (values.ne("UNKNOWN") & ~accepted).any():
+            raise ValueError("Unaccepted metadata candidate has an assigned identifier")
+        result[column] = values
+    result["experimental_replicate"] = "UNKNOWN"
+    result["independent_biological_replicates"] = "NOT_ESTABLISHED"
+    return result.drop(columns=["strain", "treatment", "timepoint", "filename"])
+
+
+def export_acquisition_accounting(audit_dir, frames, out, evidence):
+    """Reuse the checked workbook audit without upgrading its identity evidence."""
+    summary_path, verification_path = audit_dir / "summary.json", audit_dir / "verification.json"
+    summary = json.loads(summary_path.read_text())
+    verification = json.loads(verification_path.read_text())
+    if (summary.get("scid_used") is not False or verification.get("scid_used") is not False
+            or verification.get("all_checks_passed") is not True):
+        raise ValueError("Require a verified metadata audit that excludes SCID")
+    if not summary.get("source_evidence"):
+        raise ValueError("Metadata audit lacks source evidence")
+    for item in summary["source_evidence"]:
+        path = Path(item["path"])
+        if sha256(path) != item["sha256"]:
+            raise ValueError(f"Metadata-audit evidence changed: {path}")
+        evidence.append({**item, "size_bytes": path.stat().st_size})
+    mapping_path = audit_dir / "image_metadata_mapping.csv"
+    mapping_hash = sha256(mapping_path)
+    mapping = pd.read_csv(mapping_path, dtype={key: str for key in ACQUISITION_IDS}, low_memory=False)
+    accepted = mapping.loc[mapping.mapping_status.eq(METADATA_MATCH)]
+    for column in ("n_metadata_candidates", "n_local_key_candidates"):
+        if not accepted[column].eq(1).all():
+            raise ValueError("Accepted metadata association is not unique")
+    for axis in ("width", "height"):
+        if (not accepted["local_" + axis].gt(0).all()
+                or not accepted["local_" + axis].eq(accepted["metadata_" + axis]).all()):
+            raise ValueError("Accepted metadata association has inconsistent dimensions")
+    if any(accepted[column].fillna("").ne("").any() for column in ("header_error", "metadata_conflicts")):
+        raise ValueError("Accepted metadata association has unresolved conflicts")
+    expected = set().union(*(set(frame.image_path) for frame in frames.values()))
+    if set(mapping.image_path) != expected or len(mapping) != summary["n_local_images_before_qc"]:
+        raise ValueError("Metadata audit and accounting audit have different image populations")
+    enriched, coverage = [], []
+    for profile, frame in frames.items():
+        joined = attach_acquisition_metadata(frame, mapping)
+        enriched.append(joined)
+        for stage, subset in (("before_qc", joined), ("after_qc", joined.loc[joined.decision.eq("retained")])):
+            row = {"benchmark": profile, "stage": stage, "n_images": len(subset),
+                   "n_metadata_associations": int(subset.mapping_status.eq(METADATA_MATCH).sum())}
+            for name in ACQUISITION_IDS:
+                known = subset[name].ne("UNKNOWN")
+                row["n_known_" + name] = int(known.sum())
+                row["n_unknown_" + name] = int((~known).sum())
+                row["n_recorded_" + name] = int(subset.loc[known, name].nunique())
+            row["independent_biological_replicates"] = "NOT_ESTABLISHED"
+            coverage.append(row)
+            if stage == "after_qc" and profile in summary["cohorts"]:
+                original = summary["cohorts"][profile]
+                if row["n_images"] != original["n_retained"] or row["n_metadata_associations"] != original["n_matched"]:
+                    raise ValueError("Metadata coverage differs from the verified audit")
+                for name in ACQUISITION_IDS:
+                    if (row["n_known_" + name] != original["levels"][name]["n_known_images"]
+                            or row["n_recorded_" + name] != original["levels"][name]["n_recorded_identifiers"]):
+                        raise ValueError("Recorded identifier counts differ from the verified audit")
+    combined = pd.concat(enriched, ignore_index=True)
+    columns = ["benchmark", "image_path", "image_uid", "canonical_strain", "canonical_treatment",
+               "timepoint_min", "decision", "seg_qc_reason", "mapping_status", "metadata_row",
+               "identity_evidence", *ACQUISITION_IDS, "experimental_replicate", "independent_biological_replicates"]
+    combined[columns].to_csv(out / "field_accounting_with_acquisition_ids.csv", index=False)
+    dimensions = ["benchmark", "canonical_strain", "canonical_treatment", "timepoint_min"]
+    for name in ACQUISITION_IDS:
+        retention_table(combined, [*dimensions, name]).to_csv(out / f"retention_by_{name}.csv", index=False)
+    retention_table(combined, [*dimensions, *ACQUISITION_IDS]).to_csv(out / "retention_by_acquisition_hierarchy.csv", index=False)
+    coverage_table = pd.DataFrame(coverage)
+    coverage_table.to_csv(out / "acquisition_metadata_coverage.csv", index=False)
+    if sha256(mapping_path) != mapping_hash:
+        raise ValueError("Metadata mapping changed during accounting")
+    for path in (summary_path, verification_path, mapping_path):
+        evidence.append({"path": str(path), "sha256": sha256(path), "size_bytes": path.stat().st_size})
+    result = {"audit_dir": str(audit_dir), "scid_used": False,
+              "identity_evidence": "composite_metadata_association_not_checksum_verified",
+              "independent_biological_replicates": "NOT_ESTABLISHED", "coverage": coverage,
+              "workbook_identifiers": summary["workbook_identifiers"]}
+    write_json(out / "acquisition_metadata_assessment.json", result)
+    return result
 
 
 def inventory_raw(root):
@@ -270,7 +381,7 @@ def markdown_table(frame):
     return lines
 
 
-def audit(root, out):
+def audit(root, out, metadata_audit=None):
     out.mkdir(parents=True, exist_ok=False)
     sources, findings, frames, flows = [], [], {}, []
     for relative in ["Code/Training/Rebuttal/audit_dataset_accounting.py",
@@ -323,7 +434,8 @@ def audit(root, out):
     combined = pd.concat(frames.values(), ignore_index=True)
     dimensions = {
         "strain": ["canonical_strain"], "treatment": ["canonical_treatment"],
-        "timepoint": ["timepoint_min"], "strain_treatment_timepoint": ["canonical_strain", "canonical_treatment", "timepoint_min"],
+        "timepoint": ["timepoint_min"], "strain_treatment": ["canonical_strain", "canonical_treatment"],
+        "strain_treatment_timepoint": ["canonical_strain", "canonical_treatment", "timepoint_min"],
         "source_strain_treatment_timepoint_replicate": ["source_root", "source_folder", "canonical_strain", "canonical_treatment", "timepoint_min", "experimental_replicate"],
     }
     for name, cols in dimensions.items():
@@ -412,6 +524,7 @@ def audit(root, out):
     write_json(out / "model_population_checks.json", models)
     workbook = inspect_workbook(root, frames["untreated_5class"], out)
     write_json(out / "replicate_metadata_assessment.json", workbook)
+    acquisition = export_acquisition_accounting(metadata_audit, frames, out, sources) if metadata_audit else None
     claims = pd.DataFrame([
         {"claim": "untreated_collected", "reported": 8803, "observed": inventory_totals["untreated_image_files"], "scope": "image files across original Dataset_A and new-root source trees; not verified unique physical fields"},
         {"claim": "treated_collected", "reported": 67849, "observed": inventory_totals["treated_image_files"], "scope": "15-class pre-QC manifest and matching raw source files"},
@@ -423,7 +536,8 @@ def audit(root, out):
               "raw_inventory": inventory_totals, "benchmark_flow": flows, "claims": claims.to_dict("records"),
               "cohort_transitions": transitions, "tile_qc_checks": tile_checks,
               "15class_merge_mismatch_counts": transfer_mismatches, "model_population_checks": models,
-              "replicate_metadata": workbook, "findings": findings, "source_evidence": sources}
+              "replicate_metadata": workbook, "acquisition_metadata": acquisition,
+              "findings": findings, "source_evidence": sources}
     write_json(out / "audit_summary.json", report)
     return report, frames, flow
 
@@ -469,9 +583,10 @@ def write_report(out, report, frames, flow):
                   f"Adding {fifteen['n_before'] - thirteen['n_before']:,} further images "
                   f"({fifteen['n_after'] - thirteen['n_after']:,} retained) produces the 15-class cohort of {fifteen['n_before']:,} / {fifteen['n_after']:,}. The final addition comprises "
                   "E.coli5-alphaAmpR + Kanamycin and E.coli5-alphaKanR + Ampicillin.", "",
-                  "The local paper draft and the already-prepared reviewer-1 rerun refer to the older **13-class** cohort. "
-                  "The reviewer's approximately 17,124-image Results population refers to the **15-class** cohort. "
-                  "The target manuscript, rerun, and tables need to use the same cohort version.", "",
+                  "The approximately 17,124-image Results population corresponds to the **15-class** cohort, not the "
+                  "13-class cohort. Cohort versions overlap and must not be summed. The manuscript, rerun, and tables "
+                  "need to state the same cohort version. Later duplicate/metadata exclusions in rebuttal sensitivity "
+                  "experiments are separate from this historical QC flow.", "",
                   "## Retention by strain and treatment", ""])
     for profile in ("untreated_5class", "treated_15class"):
         lines.extend([f"### {profile}", ""])
@@ -512,10 +627,35 @@ def write_report(out, report, frames, flow):
                   f"Strain-plus-filename matching finds candidates for {workbook['n_benchmark_rows_with_filename_candidate']:,} pre-QC benchmark rows "
                   f"({workbook['n_retained_rows_with_filename_candidate']:,} retained), but these are unverified mappings. "
                   "`replicate_metadata_candidates.csv` exposes the candidates and ambiguity; none is treated as a verified replicate assignment.", "",
-                  "A per-image mapping to culture/experimental replicate and acquisition identifiers is required to complete the "
-                  "replicate-specific accounting. The workbook's reported cultures do not demonstrate independent biological repeats "
-                  "within each strain. Missing identifiers are reported as UNKNOWN, not as zero experimental replicates.", "",
-                  "## Evidence and limitations", "",
+                  "These older filename-only candidates are not used for identifier-stratified accounting. "
+                  "Missing identifiers are reported as UNKNOWN, not as zero experimental replicates.", ""])
+    acquisition = report.get("acquisition_metadata")
+    if acquisition:
+        lines.extend(["### Updated provider metadata", "",
+                      "The newer metadata audit is used only after rechecking its source hashes, exact local populations, "
+                      "condition/time/filename keys and retained mapping coverage. Associations require exact composite keys "
+                      "and matching image dimensions in that audit, but are not checksum verification of provider files. "
+                      "SCID is not used; no new biological-replicate assignments are inferred.", "",
+                      "`field_accounting_with_acquisition_ids.csv` preserves every pre-QC row, its exclusion decision, "
+                      "mapping status and workbook row reference. `retention_by_acquisition_hierarchy.csv` reports "
+                      "before/after counts by strain, treatment, time, culture, preparation, slide and session. Separate "
+                      "`retention_by_culture_id.csv`, `retention_by_preparation_id.csv`, `retention_by_slide_id.csv` and "
+                      "`retention_by_acquisition_session_id.csv` provide additive tables, including UNKNOWN categories. "
+                      "Unmatched metadata does not exclude an image from historical QC accounting.", ""])
+        coverage = pd.DataFrame(acquisition["coverage"])
+        coverage = coverage.loc[coverage.benchmark.isin(["untreated_5class", "treated_13class", "treated_15class"])]
+        lines.extend(markdown_table(coverage[["benchmark", "stage", "n_images", "n_metadata_associations",
+                                             "n_recorded_culture_id", "n_recorded_preparation_id",
+                                             "n_recorded_slide_id", "n_recorded_acquisition_session_id"]]))
+        lines.extend(["", "Identifier counts are not biological-replicate counts and must not be added across strata. "
+                      "The provider workbook records one Culture ID per strain; independent inoculation/growth is not "
+                      "established by these labels. Independent biological-replicate counts remain NOT ESTABLISHED. "
+                      "`acquisition_metadata_coverage.csv` reports known and unknown image denominators at each level.", ""])
+    else:
+        lines.extend(["A checked per-image mapping to experimental-replicate/acquisition identifiers is required to "
+                      "complete identifier-stratified accounting. Use --metadata_audit with the verified newer workbook "
+                      "audit to export recorded acquisition IDs; those IDs still do not establish biological replication.", ""])
+    lines.extend(["## Evidence and limitations", "",
                   "`audit_summary.json` records source paths and SHA-256 hashes, lineage checks, training-population checks, "
                   "and discrepancies. Each benchmark has a row-level decision ledger. Raw-source inventories exclude AppleDouble "
                   "sidecars and derived tiles, archives, and alternate copies outside the three benchmark source roots. "
@@ -528,8 +668,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=ROOT)
     parser.add_argument("--out_dir", type=Path, required=True)
+    parser.add_argument("--metadata_audit", type=Path,
+                        help="Verified experimental-independence audit for recorded acquisition-ID breakdowns; SCID excluded")
     args = parser.parse_args()
-    report, frames, flow = audit(args.root.resolve(), args.out_dir.resolve())
+    report, frames, flow = audit(args.root.resolve(), args.out_dir.resolve(),
+                                args.metadata_audit.resolve() if args.metadata_audit else None)
     write_report(args.out_dir.resolve(), report, frames, flow)
     print(flow.to_string(index=False), flush=True)
     print(f"[DONE] {args.out_dir / 'dataset_accounting_audit.md'}", flush=True)

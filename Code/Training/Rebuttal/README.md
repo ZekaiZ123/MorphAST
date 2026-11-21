@@ -94,6 +94,134 @@ source-folder breakdowns, row-level decisions, tile coverage, and source hashes.
 Replicate identifiers remain UNKNOWN unless verified; workbook filename matches
 are exported separately as candidates. Input images and manifests are read only.
 
+Add `--metadata_audit outputs/rebuttal/experimental_independence_RUN_ID` to use
+the verified newer provider-workbook audit. Source hashes, exact image keys and
+retained coverage are rechecked. The audit adds row-level acquisition identifiers
+and additive before/after tables by strain, treatment, time, culture, preparation,
+slide and session, preserving UNKNOWN categories and workbook row references.
+SCID is excluded. Composite associations are not provider-file checksum matches;
+recorded IDs do not establish independent biological-replicate counts. Metadata
+availability never changes the historical QC population. Cohort versions and
+later rebuttal sensitivity exclusions are reported as different populations.
+
+## Raw confusion counts and error images
+
+```bash
+python Code/Training/Rebuttal/audit_error_cases.py --out_dir outputs/rebuttal/error_cases_RUN_ID
+```
+
+The new output directory contains separate 13-class and 15-class legacy-CV
+audits: complete integer confusion matrices (exact labels and both treatment
+decision rules), fold/time/source-stratified counts, all prediction identifiers,
+all error records, and a browsable `error_gallery.html` for every exact-label or
+marginal-treatment error. Original images are copied byte-for-byte with SHA256
+checksums. Full-field previews and 224x224 pre-normalization input views have no
+extra contrast enhancement. Deterministic DH5alpha ampicillin/kanamycin comparison
+pages include correctly classified controls matched on time, fold and source,
+with selection rules and missing controls explicitly recorded.
+
+These are not corrected nested-CV predictions. Untreated original per-fold and
+pooled 5x5 counts are exported separately; that trainer did not save per-image
+predictions, so untreated image identities are not guessed from the counts.
+Source collections are not asserted to be experimental batches. Batch/session,
+biological replicate and optical modality remain UNKNOWN until acquisition
+metadata is provided. An optional `--acquisition_metadata path.csv` accepts an
+exact-path mapping with columns `image_path`, `batch_id`,
+`acquisition_session_id`, `biological_replicate_id`, `optical_modality`, and
+`metadata_source`. Use literal UNKNOWN for unavailable values; duplicate paths
+and missing provenance are rejected. Regenerate into a new directory after
+metadata is supplied. No paper, model, original image, or manifest is modified.
+
+For corrected treated outer-test predictions and the cleaned sensitivity arms,
+use the separate exporter (new directory required):
+
+```bash
+python Code/Training/Rebuttal/audit_corrected_error_cases.py \
+  --out_dir outputs/rebuttal/corrected_error_evidence_RUN_ID \
+  --metadata_audit outputs/rebuttal/experimental_independence_20261120 \
+  --hash_inventory outputs/rebuttal/duplicate_conflicts_20261118_verified/all_retained_image_hashes.csv \
+  --analysis corrected_13class Model/Rebuttal_CV/reviewer1_20261118 treated \
+  --analysis corrected_15class Model/Rebuttal_CV/reviewer1_treated15_20261119 treated15 \
+  --analysis cleaned_field Model/Rebuttal_CV/preparation_sensitivity_20261120 field_baseline \
+  --analysis cleaned_preparation Model/Rebuttal_CV/preparation_sensitivity_20261120 preparation_sensitivity
+```
+
+The exporter validates frozen manifests, sources, splits, checkpoint selection,
+checkpoints and saved predictions, and freshly rehashes the original retained
+15-class image population. It runs no inference. Every exact-label or marginal-
+treatment error receives an original-file copy, a loaded full-field preview and
+a 224-pixel pre-normalization input view. Known contradictory-label copies are
+also archived, including correctly classified copies. HTML galleries display
+condition, time, fold, culture, preparation, slide, session, metadata-match status,
+workbook row, exact-content overlap and SHA256. Batch, biological replicate and
+optical contrast mode remain UNKNOWN; SCID is not used.
+
+All raw matrices include zeros, with separate exact-label, treatment-marginal and
+top-class-treatment decision rules and fold/time/acquisition/conflict strata.
+DH5alpha comparison controls exclude known label conflicts and do not relax
+known acquisition constraints. Cross-stratum QC summaries are descriptive, not
+mechanistic tests. Original and cleaned analyses are never pooled or represented
+as a pure effect of removing mislabeled copies. `presentation_review.csv` flags
+draft passages and `presentation_corrections.md` supplies proposed wording without
+editing the manuscript. A run is complete only when `verification.json` exists
+and reports success with zero required image-export failures.
+
+The error archive also screens exact file and model-input hashes, but that screen
+is limited to exported errors/controls. For a full retained-cohort byte-duplicate
+audit, including correctly classified counterparts, run:
+
+```bash
+python Code/Training/Rebuttal/audit_duplicate_conflicts.py --out_dir outputs/rebuttal/duplicate_conflicts_RUN_ID
+```
+
+All retained source paths are SHA256-hashed once across both cohorts. Reports
+separate conflicting condition labels from duplicate content spanning CV folds,
+include condition/time/source identifiers, and keep failed hashes unknown rather
+than declaring those images unique. Neither this audit nor the error exporter
+resolves labels, deletes data, changes training jobs, or reports post hoc filtered
+performance as corrected evaluation.
+
+Pass `--duplicate_audit outputs/rebuttal/duplicate_conflicts_RUN_ID` to the error
+exporter to annotate the galleries/ledgers with full-cohort conflicting-label
+and cross-fold duplicate flags. Exact populations, identifiers and archived
+image hashes are checked before accepting those annotations. Recorded labels
+must not be interpreted as verified ground truth where conflicts are present.
+
+## Experimental independence audit
+
+```bash
+python Code/Training/Rebuttal/audit_experimental_independence.py --workbook Model/Rebuttal_CV/Dataset_A_Last_update_11_20_2026.xlsx --out_dir outputs/rebuttal/experimental_independence_RUN_ID --workers 8
+```
+
+Use a new output directory. SCID is excluded at the user's request. The audit
+recovers the recorded culture, preparation, slide and acquisition-session IDs,
+preserves Excel row numbers and reference notes, and checks identifier/path and
+parent relationships. It does not infer independently grown biological
+replicates from folder names, slide counts, dates or imaging fields.
+
+Images are associated by exact strain, treatment, explicit timepoint and filename,
+unique in both inventories, plus matching first-frame image dimensions. These
+are composite metadata associations, not checksum verification of provider files.
+Unmatched/ambiguous records and missing identifiers remain explicit; alternative
+strain/filename candidates are exported but not accepted. No fuzzy renaming,
+treatment reassignment, missing-timepoint inference or ID forward-filling occurs.
+
+Outputs include workbook and pre/post-QC counts; a per-image mapping ledger;
+retained-image identifiers and outer folds for untreated 5-class and treated
+13/15-class cohorts; per-fold overlap at each identifier level for original CV
+and internal-validation reruns; and necessary per-class group-count checks for
+future grouped splits. Frozen split hashes/populations are verified, and treated
+outer membership must agree exactly with original saved predictions. Untreated
+membership is the existing frozen reconstruction because original image-level
+predictions were not saved. Unknown IDs are never counted as an independent
+group. The report distinguishes documented identifiers from demonstrated
+biological replication and specifies remaining provenance/experiment needs.
+
+No source image, manifest, split, model or manuscript is changed. This audit does
+not resolve conflicting-label duplicates or automatically submit a new training
+run. A culture-level split can be infeasible if holding out a culture removes
+the only documented examples of a class; splitting its fields does not fix that.
+
 ## Culture/slide/session CV feasibility
 
 Before attempting the requested higher-level split, run:
