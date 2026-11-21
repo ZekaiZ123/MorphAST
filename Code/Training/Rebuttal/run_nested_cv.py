@@ -20,6 +20,9 @@ import timm
 import torch
 
 from validation import PROTOCOL, audit_partition, choose_candidate, classification_metrics, sha256, write_json
+from preparation_sensitivity import (
+    PROTOCOL as SENSITIVITY_PROTOCOL, audit_frozen_partition, verify_frozen_inputs,
+)
 
 CODE = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(CODE / "Training/Model_Training_5_class"))
@@ -116,8 +119,11 @@ def test_checkpoint(model_key, test_df, train_df, settings, checkpoint, device):
 
 def run_fold(run_dir: Path, task: str, fold: int, device="cuda"):
     config = json.loads((run_dir / "run.json").read_text())
-    if config["protocol"] != PROTOCOL or config["sklearn"] != sklearn.__version__:
+    if config["protocol"] not in (PROTOCOL, SENSITIVITY_PROTOCOL) or config["sklearn"] != sklearn.__version__:
         raise ValueError("Protocol or scikit-learn version mismatch")
+    sensitivity = config["protocol"] == SENSITIVITY_PROTOCOL
+    if sensitivity:
+        verify_frozen_inputs(run_dir, config)
     for relative, expected in config["source_sha256"].items():
         if sha256(run_dir / "source" / relative) != expected:
             raise ValueError(f"Frozen source changed: {relative}")
@@ -128,11 +134,12 @@ def run_fold(run_dir: Path, task: str, fold: int, device="cuda"):
     split_path = task_dir / "splits" / f"fold_{fold}.csv"
     if sha256(split_path) != settings["splits"][str(fold)]:
         raise ValueError("Frozen split changed")
-    df = pd.read_csv(task_dir / "manifest.csv")
+    dtypes = {key: str for key in ("culture_id", "preparation_id", "slide_id", "acquisition_session_id")} if sensitivity else None
+    df = pd.read_csv(task_dir / "manifest.csv", dtype=dtypes, low_memory=False)
     split = pd.read_csv(split_path)
     if split.row_id.tolist() != list(range(len(df))) or not split.image_path.equals(df.image_path):
         raise ValueError("Split row order does not match manifest")
-    audit = audit_partition(df, split.role.to_numpy())
+    audit = audit_frozen_partition(df, split, task) if sensitivity else audit_partition(df, split.role.to_numpy())
     out_dir = task_dir / f"fold_{fold}"
     out_dir.mkdir(exist_ok=True)
     lock = out_dir / "running.lock"
@@ -200,13 +207,15 @@ def run_fold(run_dir: Path, task: str, fold: int, device="cuda"):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run_dir", type=Path, required=True)
-    parser.add_argument("--task", choices=["untreated", "treated", "treated15"], required=True)
+    parser.add_argument("--task", required=True, help="Task key from the frozen run.json")
     parser.add_argument("--fold", type=int, choices=range(1, 6), required=True)
     parser.add_argument("--device", choices=["cuda", "cpu"], default="cuda")
     args = parser.parse_args()
     config = json.loads((args.run_dir / "run.json").read_text())
     if args.task not in config["tasks"]:
         parser.error(f"Task {args.task!r} is not included in this frozen run")
+    if args.fold > config["tasks"][args.task]["n_folds"]:
+        parser.error("Fold is not included in this frozen run")
     if args.device == "cuda" and not torch.cuda.is_available():
         raise SystemExit("CUDA unavailable: submit this job to the GPU partition")
     torch.set_num_threads(1)

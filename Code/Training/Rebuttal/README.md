@@ -131,3 +131,51 @@ split: inner-validation coverage and crossed class constraints still need
 checking. Do not silently discard culture/field constraints or replace the task
 with unseen-class evaluation to make a split possible. Preparation/slide counts
 do not establish independent biological replication.
+
+## Matched preparation/slide sensitivity experiment
+
+This is an explicitly exploratory alternative, NOT a replacement for the
+infeasible culture/session-independent evaluation. The preparation arm allows
+original cross-time field IDs to cross partitions because their physical meaning
+has not been confirmed. Never describe it as jointly field/preparation-disjoint
+or biologically independent. The command requires explicit acknowledgement:
+
+```bash
+RUN_DIR="$PWD/Model/Rebuttal_CV/preparation_sensitivity_RUN_ID"
+python Code/Training/Rebuttal/prepare_preparation_sensitivity.py --run_dir "$RUN_DIR" --allow_legacy_field_overlap
+sbatch --output="$RUN_DIR/train-%A_%a.out" "$RUN_DIR/source/Code/Training/Rebuttal/run_preparation_sensitivity.sbatch" "$RUN_DIR"
+sbatch --dependency=afterany:TRAIN_JOB_ID --output="$RUN_DIR/report-%j.out" "$RUN_DIR/source/Code/Training/Rebuttal/summarize_preparation_sensitivity.sbatch" "$RUN_DIR"
+```
+
+Preparation rechecks the metadata-audit evidence and rehashes every retained
+source image. Conflicting-label copies are identified before metadata filtering
+and excluded without relabeling. Both arms receive exactly the same cleaned
+images, original labels and preprocessing. The field baseline groups connected
+original-field IDs and exact content; the preparation arm groups connected
+preparation IDs, slide IDs and exact content. Same-label duplicates stay together.
+Culture/session sharing is measured, not prevented. SCID is not used.
+
+Both arms use the same deterministic, outcome-blind splitter: largest class-pure
+components first, balancing per-class outer-test image counts with seeded tie
+breaking. Each outer development partition uses a grouped inner holdout greedily
+targeting 20% of its images per class while retaining training coverage. No
+split/seed search or outer-test-based checkpoint selection occurs. Every class
+must occur in train, validation and test. Counts and time coverage are exported;
+actual training sizes can differ between arms. This is not the original outer
+split reconstruction and differences cannot isolate batch bias.
+
+The ten-job array trains fresh ImageNet-initialized EfficientNet-B0 models for
+15 epochs, using the existing optimizer and checkpoint-selection code. Five
+field folds precede five preparation folds, with at most four GPUs concurrently.
+The report runs after the array ends, including failures, and never reports an
+incomplete set of folds as a completed estimate.
+
+Artifacts include `protocol.md`, `partition_counts.csv`,
+`partition_time_counts.csv`, `identifier_overlap.csv`, frozen source/evidence,
+`sensitivity_results.md/json`, `outer_fold_metrics.csv`, and
+`sensitivity_comparison.csv`. Each arm exports pooled outer predictions, raw
+confusion counts, per-class metrics, all error-case records, and error/confusion
+counts by preparation, session, time and fold. Mean +/- sample SD and pooled
+metrics are separate; fold numbers are not paired units across arms. The report
+retains the unresolved physical-field, culture, session and biological-replicate
+limitations regardless of the resulting performance.
