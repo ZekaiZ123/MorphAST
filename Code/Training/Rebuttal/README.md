@@ -98,6 +98,27 @@ positive/negative denominators, pooled/per-fold AUCs and source/artifact hashes
 are saved in a new directory. Fold SDs are descriptive, not confidence intervals;
 pooled AUC and mean fold AUC are kept separate. No inference or retraining occurs.
 
+### Corrected five-class per-fold performance
+
+```bash
+python Code/Training/Rebuttal/plot_corrected_fiveclass_performance.py \
+  --run_dir Model/Rebuttal_CV/reviewer1_20261118 \
+  --confusion_dir outputs/rebuttal/corrected_fiveclass_confusion_20261121/primary \
+  --out_dir outputs/rebuttal/corrected_fiveclass_performance_RUN_ID
+```
+
+Grouped bars show macro-F1, balanced accuracy, and overall accuracy separately
+for each outer test fold, using only the primary inner-selected backbones and
+checkpoints. Predictions, scores, model assignments, and confusion counts are
+checked against the same verified primary reference used by the ROC figure.
+The percentage axis starts at zero, each bar has its numerical value, and fold
+labels include test-image counts. The footer gives unweighted across-fold means
+and sample SDs (ddof=1), not pooled scores or confidence intervals. No error bars
+are assigned to individual folds. PNG/PDF/SVG figures, a caption, exact bar
+values, fold metrics and summaries, predictions, and source/artifact hashes are
+exported to a new directory without inference, retraining, or overwriting earlier
+outputs. The original field grouping does not establish biological independence.
+
 ### Treated 15-class only
 
 Preparation defaults to the original untreated/treated-13 pair. Use the explicit
