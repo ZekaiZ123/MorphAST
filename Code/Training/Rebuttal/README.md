@@ -78,6 +78,26 @@ metrics. Source/artifact hashes are recorded in `verification.json`. A new outpu
 directory is required. No inference, retraining or earlier-output changes occur.
 This corrects selection/evaluation reuse, not experimental-replicate dependence.
 
+### Corrected five-class ROC plot
+
+```bash
+python Code/Training/Rebuttal/plot_corrected_fiveclass_roc.py \
+  --run_dir Model/Rebuttal_CV/reviewer1_20261118 \
+  --confusion_dir outputs/rebuttal/corrected_fiveclass_confusion_20261121/primary \
+  --out_dir outputs/rebuttal/corrected_fiveclass_roc_RUN_ID
+```
+
+Five one-versus-rest curves threshold each strain's softmax probability against
+the other four strains. Only the primary inner-selected outer-test predictions
+are used, with scores, labels, fold/backbone assignments and confusion counts
+checked against the specified verified primary confusion export. The inset
+enlarges FPR 0-0.05 (95-100% specificity), TPR 0.80-1.00; the legend reports
+full-range pooled AUC, not partial AUC. Curves are not smoothed or jittered.
+PNG/PDF/SVG figures, a caption, threshold coordinates and TP/FP/TN/FN counts,
+positive/negative denominators, pooled/per-fold AUCs and source/artifact hashes
+are saved in a new directory. Fold SDs are descriptive, not confidence intervals;
+pooled AUC and mean fold AUC are kept separate. No inference or retraining occurs.
+
 ### Treated 15-class only
 
 Preparation defaults to the original untreated/treated-13 pair. Use the explicit
