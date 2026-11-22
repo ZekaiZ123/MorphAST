@@ -98,6 +98,35 @@ positive/negative denominators, pooled/per-fold AUCs and source/artifact hashes
 are saved in a new directory. Fold SDs are descriptive, not confidence intervals;
 pooled AUC and mean fold AUC are kept separate. No inference or retraining occurs.
 
+### Corrected five-class precision-recall plot
+
+```bash
+python Code/Training/Rebuttal/plot_corrected_fiveclass_pr.py \
+  --run_dir Model/Rebuttal_CV/reviewer1_20261118 \
+  --confusion_dir outputs/rebuttal/corrected_fiveclass_confusion_20261121/primary \
+  --roc_dir outputs/rebuttal/corrected_fiveclass_roc_20261121 \
+  --out_dir outputs/rebuttal/corrected_fiveclass_pr_RUN_ID
+```
+
+Five one-versus-rest PR curves pool the primary inner-selected outer-test
+softmax scores, treating each strain as positive and the remaining four as
+negative. Predictions, probabilities, and selected backbones are checked against
+both the verified primary confusion and ROC exports. The same strain colors and
+line styles are used as in the ROC plot. An inset enlarges recall 0.80-1.00 and
+precision 0.90-1.00 without changing coordinates or hiding the full-range curves.
+The legend reports full-range noninterpolated average precision (AP), not ROC
+AUC, trapezoidal PR area, or partial/inset AP. Dotted horizontal lines indicate
+class prevalence. Empirical steps retain ties and all thresholds without
+smoothing or a precision envelope. The conventional terminal point (recall=0,
+precision=1, no predicted positives) is explicitly flagged with a synthetic
+infinite threshold in the coordinate CSV.
+
+PNG/PDF/SVG figures, a caption, threshold coordinates and TP/FP/TN/FN counts,
+class prevalence and sample counts, pooled/per-fold AP, predictions, and hashes
+are exported to a new directory. Fold means and sample SDs (ddof=1) are separate
+from pooled AP, not confidence intervals. No inference, retraining, manuscript
+edits, or changes to earlier outputs occur.
+
 ### Corrected five-class per-fold performance
 
 ```bash
