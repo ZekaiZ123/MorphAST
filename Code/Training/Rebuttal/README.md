@@ -98,6 +98,14 @@ positive/negative denominators, pooled/per-fold AUCs and source/artifact hashes
 are saved in a new directory. Fold SDs are descriptive, not confidence intervals;
 pooled AUC and mean fold AUC are kept separate. No inference or retraining occurs.
 
+Add `--no_text --no_grid` with a new output directory to export a plot-only
+version without titles, axis/tick labels, legend, footer, or background grids in
+either the main axes or inset. Axes, tick marks, curves, chance diagonal, and
+zoom indicators remain. Plot margins are tightened; curve coordinates, colors,
+line styles, axis limits, and inset limits are unchanged. The two flags can also
+be used independently. AUCs and coordinates remain available in the CSV exports,
+and presentation settings are recorded in the summary and verification files.
+
 ### Corrected five-class precision-recall plot
 
 ```bash

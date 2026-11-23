@@ -90,12 +90,12 @@ def verify_confusion_reference(pred, cm, reference_dir, run_dir, evidence):
         raise ValueError("Reference used different selected backbones")
 
 
-def make_figure(curves, summary):
+def make_figure(curves, summary, *, no_text=False, no_grid=False):
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     from matplotlib.patches import ConnectionPatch, Rectangle
-    from matplotlib.ticker import FormatStrFormatter
+    from matplotlib.ticker import FormatStrFormatter, NullFormatter
 
     fig, ax = plt.subplots(figsize=(9.2, 8.1))
     fig.subplots_adjust(left=.105, right=.97, bottom=.17, top=.86)
@@ -148,6 +148,21 @@ def make_figure(curves, summary):
     fig.text(.5, .06, f"{n:,} images | Five outer test folds | Each strain versus the other four\n"
              "Inset: FPR 0-0.05 and TPR 0.80-1.00. Legend AUCs use the full ROC range.",
              ha="center", fontsize=10, color="#344654")
+    if no_grid:
+        for axis in (ax, inset):
+            axis.grid(False, which="both", axis="both")
+    if no_text:
+        legend.remove()
+        for text in list(fig.texts):
+            text.remove()
+        for axis in (ax, inset):
+            axis.set(title="", xlabel="", ylabel="")
+            for dimension in (axis.xaxis, axis.yaxis):
+                dimension.set_major_formatter(NullFormatter())
+                dimension.set_minor_formatter(NullFormatter())
+                dimension.get_offset_text().set_visible(False)
+        # Reclaim label/title margins without changing any data or inset limits.
+        fig.subplots_adjust(left=.045, right=.985, bottom=.045, top=.985)
     return fig, ax, inset
 
 
@@ -157,6 +172,9 @@ def main():
     parser.add_argument("--confusion_dir", type=Path, required=True,
                         help="Verified primary directory from plot_corrected_fiveclass_confusion.py")
     parser.add_argument("--out_dir", type=Path, required=True)
+    parser.add_argument("--no_text", action="store_true",
+                        help="Omit titles, labels, tick labels, legend and footer; retain axes and inset")
+    parser.add_argument("--no_grid", action="store_true", help="Remove main and inset background grid lines")
     args = parser.parse_args()
     out = args.out_dir.resolve()
     out.mkdir(parents=True, exist_ok=False)
@@ -182,30 +200,35 @@ def main():
     by_fold.to_csv(out / "per_class_auc_by_fold.csv", index=False)
     pred.to_csv(out / "outer_test_predictions.csv", index=False)
     cm.to_csv(out / "matched_confusion_counts.csv")
-    fig, _, _ = make_figure(curves, summary)
+    fig, _, _ = make_figure(curves, summary, no_text=args.no_text, no_grid=args.no_grid)
     for extension in ("png", "pdf", "svg"):
         fig.savefig(out / f"corrected_fiveclass_ovr_roc.{extension}", dpi=300, facecolor="white")
     import matplotlib.pyplot as plt
     plt.close(fig)
     models = {str(row["fold"]): row["model"] for row in fold_results}
+    auc_description = ("All figure text and the legend are omitted; full-range pooled AUCs are in per_class_auc.csv. "
+                       if args.no_text else "Full-range pooled AUCs are shown in the legend. ")
     caption = (
         "One-versus-rest ROC curves for corrected untreated five-strain classification. Each curve uses the "
         "predicted softmax probability for one strain to distinguish its images from all images of the other four "
         "strains. Curves pool one outer-test score vector for each of 804 images, using the same primary "
         "inner-selected evaluation and labels as the corrected five-class confusion matrix. Checkpoint epochs "
         "and backbone selection use internal validation only. The inset enlarges the 95-100% specificity "
-        "region (FPR 0-0.05; TPR 0.80-1.00); full-range pooled AUCs are shown in the legend. The dashed diagonal "
+        f"region (FPR 0-0.05; TPR 0.80-1.00). {auc_description}The dashed diagonal "
         "is the chance reference. Curves connect empirical threshold points without smoothing or jitter; "
         "coincident curves can overlap. Positive/negative counts and exact threshold coordinates are exported. "
         "Per-fold AUCs and their sample SDs are reported separately, not as confidence intervals for pooled AUC. "
         "These image-level results do not establish independence beyond the original field groups.\n"
     )
+    if args.no_grid:
+        caption += "Background grids are omitted in both the main axes and inset.\n"
     (out / "figure_caption.txt").write_text(caption)
     result = {"procedure": "primary_inner_selected", "n_images": len(pred), "n_folds": 5,
               "models_by_fold": models, "pooled_classification_metrics": classification,
               "pooled_macro_auc": float(summary.auc.mean()), "per_class": summary.to_dict("records"),
               "inset_fpr": list(INSET_FPR), "inset_tpr": list(INSET_TPR),
-              "auc_scope": "full_fpr_range_0_to_1", "reference_confusion_dir": str(args.confusion_dir.resolve())}
+              "auc_scope": "full_fpr_range_0_to_1", "reference_confusion_dir": str(args.confusion_dir.resolve()),
+              "presentation": {"no_text": args.no_text, "no_grid": args.no_grid}}
     write_json(out / "summary.json", result)
     for path, digest in list(evidence.items()):
         record_source(path, evidence, digest)
@@ -214,6 +237,7 @@ def main():
         "protocol": PROTOCOL, "run_dir": str(args.run_dir.resolve()),
         "same_primary_predictions_and_probabilities_as_confusion": True,
         "probability_comparison_atol": 1e-12, "probability_comparison_rtol": 1e-12,
+        "presentation": {"no_text": args.no_text, "no_grid": args.no_grid},
         "n_images": len(pred), "models_by_fold": models, "source_sha256": evidence,
         "artifact_sha256": {str(p.relative_to(out)): sha256(p) for p in sorted(out.rglob("*")) if p.is_file()},
     })

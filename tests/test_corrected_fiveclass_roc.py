@@ -119,6 +119,61 @@ class CorrectedFiveclassROCTests(unittest.TestCase):
             import matplotlib.pyplot as plt
             plt.close(fig)
 
+    def test_text_free_grid_free_export_preserves_curves_and_inset(self):
+        from matplotlib.text import Text
+        import matplotlib.pyplot as plt
+
+        df, names = population()
+        curves, summary = compute_rocs(df, names)
+        original, original_ax, original_inset = make_figure(curves, summary)
+        fig, ax, inset = make_figure(curves, summary, no_text=True, no_grid=True)
+        try:
+            fig.canvas.draw()
+            self.assertFalse(any(text.get_visible() and text.get_text() for text in fig.findobj(Text)))
+            self.assertIsNone(ax.get_legend())
+            self.assertEqual(len(ax.lines), 6)
+            self.assertEqual(len(inset.lines), 5)
+            for before, after in ((original_ax, ax), (original_inset, inset)):
+                self.assertEqual(before.get_xlim(), after.get_xlim())
+                self.assertEqual(before.get_ylim(), after.get_ylim())
+                np.testing.assert_array_equal(before.get_xticks(), after.get_xticks())
+                np.testing.assert_array_equal(before.get_yticks(), after.get_yticks())
+                self.assertFalse(any(line.get_visible() for line in after.get_xgridlines() + after.get_ygridlines()))
+                for first, second in zip(before.lines, after.lines):
+                    np.testing.assert_array_equal(first.get_xdata(), second.get_xdata())
+                    np.testing.assert_array_equal(first.get_ydata(), second.get_ydata())
+                    self.assertEqual(first.get_color(), second.get_color())
+                    self.assertEqual(first.get_linestyle(), second.get_linestyle())
+            with tempfile.TemporaryDirectory() as directory:
+                for extension in ("png", "pdf", "svg"):
+                    path = Path(directory) / ("roc_no_text_no_grid." + extension)
+                    fig.savefig(path)
+                    self.assertGreater(path.stat().st_size, 1000)
+                svg = (Path(directory) / "roc_no_text_no_grid.svg").read_text()
+                self.assertNotIn("<text", svg)
+                self.assertNotIn("DejaVuSans", svg)
+        finally:
+            plt.close(original)
+            plt.close(fig)
+
+    def test_grid_can_be_removed_without_removing_text(self):
+        from matplotlib.text import Text
+        import matplotlib.pyplot as plt
+
+        df, names = population()
+        curves, summary = compute_rocs(df, names)
+        fig, ax, inset = make_figure(curves, summary, no_grid=True)
+        try:
+            fig.canvas.draw()
+            self.assertIsNotNone(ax.get_legend())
+            self.assertTrue(ax.get_xlabel())
+            self.assertTrue(inset.get_title())
+            self.assertTrue(any(text.get_visible() and text.get_text() for text in fig.findobj(Text)))
+            for axis in (ax, inset):
+                self.assertFalse(any(line.get_visible() for line in axis.get_xgridlines() + axis.get_ygridlines()))
+        finally:
+            plt.close(fig)
+
 
 if __name__ == "__main__":
     unittest.main()
