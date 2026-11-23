@@ -18,6 +18,8 @@ from validation import PROTOCOL, sha256, write_json
 # Preserve the strain colors used by the publication's five-class figures.
 COLORS = {"E.coli5-alpha": "#4C78A8", "E.coli5-alphaKanR": "#72B7B2",
           "E.coli5-alphaAmpR": "#54A24B", "AIEC": "#E45756", "UPEC": "#F58518"}
+HIGH_CONTRAST_COLORS = {"E.coli5-alpha": "#1D4F91", "E.coli5-alphaKanR": "#00857D",
+                        "E.coli5-alphaAmpR": "#2E7D32", "AIEC": "#CC323F", "UPEC": "#D86800"}
 LINESTYLES = ["-", (0, (5, 2)), (0, (3, 1, 1, 1)), (0, (2, 1)), (0, (7, 2, 1, 2))]
 INSET_FPR = (0.0, 0.05)
 INSET_TPR = (0.8, 1.0)
@@ -90,7 +92,7 @@ def verify_confusion_reference(pred, cm, reference_dir, run_dir, evidence):
         raise ValueError("Reference used different selected backbones")
 
 
-def make_figure(curves, summary, *, no_text=False, no_grid=False):
+def make_figure(curves, summary, *, no_text=False, no_grid=False, high_contrast=False):
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -100,10 +102,12 @@ def make_figure(curves, summary, *, no_text=False, no_grid=False):
     fig, ax = plt.subplots(figsize=(9.2, 8.1))
     fig.subplots_adjust(left=.105, right=.97, bottom=.17, top=.86)
     inset = ax.inset_axes([.12, .16, .46, .48], zorder=5)
+    palette = HIGH_CONTRAST_COLORS if high_contrast else COLORS
     for i, row in enumerate(summary.itertuples(index=False)):
         points = curves.loc[curves.class_name.eq(row.class_name)].sort_values("point_index")
-        style = {"color": COLORS[row.class_name], "linestyle": LINESTYLES[i],
-                 "linewidth": 2.7 - i * .15, "solid_capstyle": "butt"}
+        style = {"color": palette[row.class_name], "linestyle": LINESTYLES[i],
+                 "linewidth": 5.0 - i * .2 if high_contrast else 2.7 - i * .15,
+                 "solid_capstyle": "butt"}
         label = f"{DISPLAY[row.class_name]}   {row.auc:.4f}"
         ax.plot(points.false_positive_rate, points.true_positive_rate, label=label, **style)
         inset.plot(points.false_positive_rate, points.true_positive_rate, **style)
@@ -175,6 +179,8 @@ def main():
     parser.add_argument("--no_text", action="store_true",
                         help="Omit titles, labels, tick labels, legend and footer; retain axes and inset")
     parser.add_argument("--no_grid", action="store_true", help="Remove main and inset background grid lines")
+    parser.add_argument("--high_contrast", action="store_true",
+                        help="Use darker strain colors and 4.2-5.0 pt curves in the main axes and inset")
     args = parser.parse_args()
     out = args.out_dir.resolve()
     out.mkdir(parents=True, exist_ok=False)
@@ -200,7 +206,8 @@ def main():
     by_fold.to_csv(out / "per_class_auc_by_fold.csv", index=False)
     pred.to_csv(out / "outer_test_predictions.csv", index=False)
     cm.to_csv(out / "matched_confusion_counts.csv")
-    fig, _, _ = make_figure(curves, summary, no_text=args.no_text, no_grid=args.no_grid)
+    presentation = {"no_text": args.no_text, "no_grid": args.no_grid, "high_contrast": args.high_contrast}
+    fig, _, _ = make_figure(curves, summary, **presentation)
     for extension in ("png", "pdf", "svg"):
         fig.savefig(out / f"corrected_fiveclass_ovr_roc.{extension}", dpi=300, facecolor="white")
     import matplotlib.pyplot as plt
@@ -222,13 +229,15 @@ def main():
     )
     if args.no_grid:
         caption += "Background grids are omitted in both the main axes and inset.\n"
+    if args.high_contrast:
+        caption += "Darker strain colors and thicker 4.2-5.0 pt curves improve visibility without changing coordinates.\n"
     (out / "figure_caption.txt").write_text(caption)
     result = {"procedure": "primary_inner_selected", "n_images": len(pred), "n_folds": 5,
               "models_by_fold": models, "pooled_classification_metrics": classification,
               "pooled_macro_auc": float(summary.auc.mean()), "per_class": summary.to_dict("records"),
               "inset_fpr": list(INSET_FPR), "inset_tpr": list(INSET_TPR),
               "auc_scope": "full_fpr_range_0_to_1", "reference_confusion_dir": str(args.confusion_dir.resolve()),
-              "presentation": {"no_text": args.no_text, "no_grid": args.no_grid}}
+              "presentation": presentation}
     write_json(out / "summary.json", result)
     for path, digest in list(evidence.items()):
         record_source(path, evidence, digest)
@@ -237,7 +246,7 @@ def main():
         "protocol": PROTOCOL, "run_dir": str(args.run_dir.resolve()),
         "same_primary_predictions_and_probabilities_as_confusion": True,
         "probability_comparison_atol": 1e-12, "probability_comparison_rtol": 1e-12,
-        "presentation": {"no_text": args.no_text, "no_grid": args.no_grid},
+        "presentation": presentation,
         "n_images": len(pred), "models_by_fold": models, "source_sha256": evidence,
         "artifact_sha256": {str(p.relative_to(out)): sha256(p) for p in sorted(out.rglob("*")) if p.is_file()},
     })

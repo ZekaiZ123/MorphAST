@@ -12,7 +12,8 @@ from sklearn.metrics import roc_auc_score
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "Code/Training/Rebuttal"))
 from plot_corrected_fiveclass_roc import (
-    DISPLAY, PROTOCOL, compare_reference_predictions, compute_rocs, make_figure, verify_confusion_reference,
+    DISPLAY, HIGH_CONTRAST_COLORS, PROTOCOL, compare_reference_predictions, compute_rocs, make_figure,
+    verify_confusion_reference,
 )
 
 
@@ -172,6 +173,50 @@ class CorrectedFiveclassROCTests(unittest.TestCase):
             for axis in (ax, inset):
                 self.assertFalse(any(line.get_visible() for line in axis.get_xgridlines() + axis.get_ygridlines()))
         finally:
+            plt.close(fig)
+
+    def test_high_contrast_thickens_and_darkens_curves_without_changing_data(self):
+        from matplotlib.colors import to_rgb
+        from matplotlib.text import Text
+        import matplotlib.pyplot as plt
+
+        def luminance(color):
+            rgb = np.asarray(to_rgb(color))
+            linear = np.where(rgb <= .04045, rgb / 12.92, ((rgb + .055) / 1.055) ** 2.4)
+            return linear @ np.array([.2126, .7152, .0722])
+
+        df, names = population()
+        curves, summary = compute_rocs(df, names)
+        original, original_ax, original_inset = make_figure(curves, summary, no_text=True, no_grid=True)
+        fig, ax, inset = make_figure(curves, summary, no_text=True, no_grid=True, high_contrast=True)
+        try:
+            fig.canvas.draw()
+            self.assertFalse(any(text.get_visible() and text.get_text() for text in fig.findobj(Text)))
+            for before, after in ((original_ax, ax), (original_inset, inset)):
+                self.assertEqual(before.get_xlim(), after.get_xlim())
+                self.assertEqual(before.get_ylim(), after.get_ylim())
+                self.assertEqual(len(before.lines), len(after.lines))
+                self.assertFalse(any(line.get_visible() for line in after.get_xgridlines() + after.get_ygridlines()))
+                for i, (first, second) in enumerate(zip(before.lines[:5], after.lines[:5])):
+                    np.testing.assert_array_equal(first.get_xdata(), second.get_xdata())
+                    np.testing.assert_array_equal(first.get_ydata(), second.get_ydata())
+                    self.assertEqual(first.get_linestyle(), second.get_linestyle())
+                    self.assertEqual(second.get_linewidth(), 5.0 - i * .2)
+                    self.assertGreater(second.get_linewidth(), 1.8 * first.get_linewidth())
+                    self.assertEqual(second.get_color(), HIGH_CONTRAST_COLORS[names[i]])
+                    self.assertLess(luminance(second.get_color()), luminance(first.get_color()))
+            self.assertEqual(original_ax.lines[-1].get_linewidth(), ax.lines[-1].get_linewidth())
+            self.assertEqual(original_ax.lines[-1].get_color(), ax.lines[-1].get_color())
+            for main_line, zoom in zip(ax.lines[:5], inset.lines):
+                self.assertEqual(main_line.get_color(), zoom.get_color())
+                self.assertEqual(main_line.get_linewidth(), zoom.get_linewidth())
+            with tempfile.TemporaryDirectory() as directory:
+                for extension in ("png", "pdf", "svg"):
+                    path = Path(directory) / ("roc_bold." + extension)
+                    fig.savefig(path)
+                    self.assertGreater(path.stat().st_size, 1000)
+        finally:
+            plt.close(original)
             plt.close(fig)
 
 

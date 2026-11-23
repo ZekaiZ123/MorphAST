@@ -106,6 +106,12 @@ line styles, axis limits, and inset limits are unchanged. The two flags can also
 be used independently. AUCs and coordinates remain available in the CSV exports,
 and presentation settings are recorded in the summary and verification files.
 
+For more visible curves, also add `--high_contrast`: this uses darker versions
+of the five strain colors and increases curve widths from 2.1-2.7 pt to 4.2-5.0 pt
+in both axes. Dash patterns are retained and the chance/zoom reference lines stay
+subdued. Use `--no_text --no_grid --high_contrast` for the bold plot-only version.
+Default styling and the separate PR plot remain unchanged.
+
 ### Corrected five-class precision-recall plot
 
 ```bash
