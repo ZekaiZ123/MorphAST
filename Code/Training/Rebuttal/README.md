@@ -185,6 +185,57 @@ report; preserving the legacy folds does not establish content-level independenc
 
 Method reference: [scikit-learn nested versus non-nested cross-validation](https://scikit-learn.org/stable/auto_examples/model_selection/plot_nested_cross_validation_iris.html).
 
+### Six corrected 15-class figures
+
+`plot_corrected_treated15.py` generates treatment confusion, timepoint performance,
+treatment ROC, fold-specific t-SNE, strain-by-treatment exact-class accuracy, and
+15-class confusion figures from the same primary inner-selected EfficientNet-B0
+evaluation. The default run is `reviewer1_treated15_20261119` (17,123 images), not
+the original publication model or duplicate-cleaned sensitivity analysis.
+
+First extract held-out features with the frozen evaluation preprocessing and
+each image's own outer-fold checkpoint. This is read-only inference, not another
+training or model-selection run. Use new output directories:
+
+```bash
+RUN_DIR="$PWD/Model/Rebuttal_CV/reviewer1_treated15_20261119"
+FEATURE_DIR="$PWD/outputs/rebuttal/corrected_treated15_features_RUN_ID"
+sbatch --output="$PWD/outputs/rebuttal/treated15_features-%j.out" \
+  Code/Training/Rebuttal/extract_corrected_treated15_features.sbatch \
+  "$RUN_DIR" "$FEATURE_DIR" "$PWD"
+# After the feature job completes and verification.json exists:
+python Code/Training/Rebuttal/plot_corrected_treated15.py \
+  --run_dir "$RUN_DIR" --feature_dir "$FEATURE_DIR" \
+  --timepoint_task treatment3 \
+  --out_dir outputs/rebuttal/corrected_treated15_figures_RUN_ID
+```
+
+Treatment scores sum the five strain-specific probabilities per treatment;
+treatment predictions use the largest sum, not the treatment attached to the
+top 15-class label. Timepoint bars use pooled outer-test three-treatment macro-F1
+and one-versus-rest macro-AUROC, not fold means. Both tasks' pooled/per-fold values
+and class support are exported. Optional `--timepoint_task exact15` keeps all 15
+labels: absent classes contribute zero to macro-F1 and make full-label macro-AUROC
+undefined. DH5alpha + CND is absent at 90 minutes. Descriptive fold mean/sample SD
+are undefined if any fold's corresponding metric is undefined; missing folds are
+not silently omitted. The heatmap shows correct exact strain-treatment predictions
+divided by that condition's image count (class recall, not one-versus-rest accuracy).
+
+Feature extraction reproduces original CUDA settings, verifies every saved
+probability (atol=5e-5, rtol=1e-4), and requires identical hard predictions. Each
+fold's 1280-dimensional pooled backbone features are reduced independently with
+PCA (50 components) and t-SNE (perplexity 30, 1000 iterations, seed 42). Five panels
+avoid pooling unaligned feature bases from independently fine-tuned models; axes
+are not comparable across folds. All outer-test images are included, with no
+label-dependent embedding tuning. Colors denote treatment; shapes denote strain.
+
+Exports include six PNG/PDF/SVG figures, captions, raw and row-normalized matrices,
+ROC coordinates/AUCs, exact-class counts, partition counts, timepoint metrics and
+support, feature coordinates, and source/artifact hashes. No original outputs are
+overwritten. Checkpoint correction does not establish biological independence or
+remove known conflicting-label and cross-fold exact duplicates; those limitations
+are retained in the output report. t-SNE is descriptive, not additional validation.
+
 ## Dataset accounting audit
 
 Run `audit_dataset_accounting.py --out_dir outputs/rebuttal/dataset_accounting_RUN_ID`
