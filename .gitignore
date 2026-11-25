@@ -25,6 +25,10 @@ Model/
 # Generated figure outputs / Prism CSV bundles
 # ---------------------------------------------------------------------------
 output/
+outputs/
+experiments/
+.worktrees/
+*.npz
 Code/Paper_Figures/output/
 
 # ---------------------------------------------------------------------------
@@ -46,6 +50,7 @@ slurm-*.out
 slurm-*.err
 logs/
 Log/
+*.log
 
 # ---------------------------------------------------------------------------
 # OS / editor cruft

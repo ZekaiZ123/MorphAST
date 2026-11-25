@@ -19,6 +19,12 @@ The repo is organised into **three task-aligned sections**:
 A small [`shared/`](./shared/) directory provides the EfficientNet-B0 wrapper,
 image-loading helpers, and benchmark utilities used by Sections 2 and 3.
 
+The corrected reviewer-requested evaluation is an additional, separate workflow:
+[`Code/Training/Rebuttal/`](./Code/Training/Rebuttal/README.md). Its original source
+paths are retained for compatibility with hashed evaluation records; see
+[`Code/README.md`](./Code/README.md). The three publication sections above are
+unchanged by this code-only port.
+
 ## Installation
 
 A single conda environment supports everything:
@@ -53,6 +59,10 @@ and the hyperparameters used in the paper.
 
 ## Reproducing the paper's headline numbers
 
+The table below is retained from the publication workflow. These are **not the
+corrected inner-selected outer-test results**. Do not substitute these values
+for the corrected run's `outer_fold_metrics.csv` or `corrected_results.json`.
+
 | Benchmark | Metric | Value |
 |---|---|---|
 | Section 2: 5-class strain ID | Accuracy (5-fold mean ± SD) | **0.9590 ± 0.0031** |
@@ -60,6 +70,34 @@ and the hyperparameters used in the paper.
 | Section 3: 15-class strain × treatment | Accuracy (5-fold mean) | **0.9112 ± 0.0124** |
 | Section 3: 15-class strain × treatment | Macro-F1 | 0.9318 ± 0.0068 |
 | Section 3: 3-class treatment level (collapsed from 15-way softmax) | Accuracy | 0.9112 |
+
+## Corrected outer-fold evaluation
+
+The [Rebuttal workflow](./Code/Training/Rebuttal/README.md) separates checkpoint
+selection from testing: each outer development partition contains a grouped
+inner-validation holdout, and the selected checkpoint is evaluated on the
+untouched outer test fold. It includes the five-class strain and 15-class
+strain-treatment tasks, per-fold macro-F1/accuracy/balanced accuracy, corrected
+confusion/ROC/PR plots, six treated-cohort figures, dataset/error audits, and the
+separately labeled preparation/slide sensitivity analysis.
+
+Use the pinned dependencies above, and supply the original benchmark metadata,
+QC manifests and images separately. Full input requirements, frozen-run checks,
+SLURM commands and plotting commands are in the workflow README. Existing trained
+runs can be verified and plotted without rerunning training. ImageNet weights
+must be cached before offline training; cluster paths and resource directives
+must be configured locally. No datasets, checkpoints, predictions, feature
+arrays, generated figures or audit-output directories are included in this port.
+
+Run the synthetic test suite from the repository root:
+
+```bash
+python -m unittest discover -s tests -p 'test_*.py'
+```
+
+Checkpoint-selection correction does not by itself establish biological or
+acquisition-session independence, or resolve conflicting-label duplicates.
+Those limitations remain explicit in the generated reports.
 
 ## Data and trained checkpoints
 
